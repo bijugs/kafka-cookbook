@@ -77,6 +77,54 @@ Defaults to installing `v0.8.1.1` of Kafka.
 Downloads and installs Kafka from the official binary releases.
 Defaults to installing `v0.8.1.1` of Kafka.
 
+### Controlling restart of kafka servers in a cluster
+
+Any changes made to Kafka configuration, will result in restart of Kafka server. 
+If this cookbook is run as a daemon on all the nodes of a kafka cluster, this can
+result in the all the kafka servers being brought time at the sametime resulting
+in unavailability. 
+
+If unavailability is an issue, the cookbook provides an option to implement custom
+logic to control the restart of kafka servers so that all the instances in a cluster
+are not stopped at the same time. For e.g. the custom logic can be something like a node
+ can restart if it can acquire a lock.
+
+By default the resources in the recipe [`` _coordinate.rb ``](https://github.com/mthssdrbrg/kafka-cookbook/blob/master/recipes/_coordinate.rb) in this cookbook performs the 
+start/restart of `` kafka `` service. If a custom logic need to be implemented, this recipe 
+can be replaced with a new recipe and the recipe name need to be updated in the attribute `` default.kafka.start_coordination.recipe ``. 
+The only requrirement is that the new recipe need to have the `` ruby_block 'coordinate-kafka-start' `` 
+as the first resource. The following is a sample recipe which can replace the default `` _coordinate.rb ``.
+
+```
+    ruby_block "coordinate-kafka-start" do
+       block do
+          Chef::Log.info (" Custom recipe to coordinate Kafka start is used")
+        end
+        action :create
+        notifies :create, 'ruby_block[restart_coordination]', :delayed
+     end
+     ruby_block "restart_coordination" do
+       block do
+          Chef::Log.info ("Need to implement the process to coordinate the restart process like using ZK")
+       end
+       action :nothing
+       notifies :restart, 'service[kafka]', :delayed
+     end
+     service 'kafka' do
+        provider kafka_init_opts[:provider]
+        supports start: true, stop: true, restart: true, status: true
+        action kafka_service_actions
+     end
+     ruby_block "restart_coordination_cleanup" do
+       block do
+          Chef::Log.info ("Implement any cleanup logic required after restart like releasing locks")
+       end
+       action :nothing
+     end
+```
+Please refer to [issue #58](https://github.com/mthssdrbrg/kafka-cookbook/issues/58) to read about the background of this feature.
+
+
 ## Copyright
 
 Copyright :: 2013-2014 Mathias Söderberg and contributors
